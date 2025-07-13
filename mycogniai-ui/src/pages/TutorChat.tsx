@@ -4,16 +4,18 @@ import { useState, useEffect, useRef } from "react";
 const TutorChat = () => {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([
-    { role: "ai", text: "Hi Dayo 👋🏽 What would you like to learn today?" },
+    { role: "ai", text: "Hi Dayo 👋🏽 Great to see you. I'm ready once you are!" },
   ]);
   const [avatarState, setAvatarState] = useState<"intro" | "idle" | "speaking">("intro");
+  const [isTyping, setIsTyping] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isTyping]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,14 +23,14 @@ const TutorChat = () => {
 
     const newMessage = { role: "user", text: question };
     setMessages((prev) => [...prev, newMessage]);
-    setAvatarState("speaking");
     setQuestion("");
+    setIsTyping(true);
 
     try {
-      const res = await fetch("http://localhost:8080/api/tts", {
+      const res = await fetch("http://localhost:8080/api/talk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: question }),
+        body: JSON.stringify({ message: question }),
       });
 
       if (!res.ok) throw new Error("TTS failed");
@@ -37,19 +39,31 @@ const TutorChat = () => {
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
 
-      audio.play();
+      const geminiReply = res.headers.get("X-Gemini-Text") || "Hmm... I didn't catch that.";
 
-      const aiReply = {
-        role: "ai",
-        text: `You asked: "${question}". Here's what I think... 🧠`,
+      setAvatarState("speaking");
+      setIsSpeaking(true);
+
+      // Only show reply after audio is done (for realism)
+      // 🟢 Immediately show the AI reply in chat
+      setMessages((prev) => [...prev, { role: "ai", text: geminiReply }]);
+
+      audio.play();
+      audio.onended = () => {
+        setAvatarState("idle");
+        setIsSpeaking(false);
       };
 
-      setMessages((prev) => [...prev, aiReply]);
-
-      audio.onended = () => setAvatarState("idle");
+      audio.play();
     } catch (err) {
-      console.error(err);
+      console.error("TTS error:", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "ai", text: "⚠️ Something went wrong with the tutor's response." },
+      ]);
       setAvatarState("idle");
+      setIsSpeaking(false);
+      setIsTyping(false);
     }
   };
 
@@ -72,17 +86,7 @@ const TutorChat = () => {
               />
             )}
 
-            {avatarState === "idle" && (
-              <video
-                className="w-full h-full object-cover"
-                src="/idle-loop.mp4"
-                autoPlay
-                muted
-                loop
-              />
-            )}
-
-            {avatarState === "speaking" && (
+            {isSpeaking ? (
               <video
                 className="w-full h-full object-cover"
                 src="/talking-loop.mp4"
@@ -90,8 +94,17 @@ const TutorChat = () => {
                 muted
                 loop
               />
+            ) : (
+              avatarState === "idle" && (
+                <video
+                  className="w-full h-full object-cover"
+                  src="/idle-loop.mp4"
+                  autoPlay
+                  muted
+                  loop
+                />
+              )
             )}
-
             <div className="absolute bottom-2 right-2 text-xs text-white bg-indigo-600 px-2 py-1 rounded">
               AI Tutor
             </div>
@@ -117,6 +130,12 @@ const TutorChat = () => {
                 {msg.text}
               </div>
             ))}
+
+            {isTyping && (
+              <div className="text-sm text-gray-500 animate-pulse ml-4">
+                AI is thinking...
+              </div>
+            )}
           </div>
 
           <form
