@@ -9,7 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "http://localhost:5173", exposedHeaders = "X-Gemini-Text")
 @RequestMapping("/api/talk")
 public class AITalkController {
 
@@ -112,9 +112,13 @@ public class AITalkController {
                 return ResponseEntity.status(500).body(("TTS Error: " + ttsRes.getStatus()).getBytes());
             }
 
+            // Instead of just returning audio bytes, we respond like this:
+
             return ResponseEntity.ok()
+                    .header("X-Gemini-Text", cleanedReply)
                     .contentType(MediaType.valueOf("audio/mpeg"))
                     .body(ttsRes.getBody());
+
 
         } catch (Exception e) {
             e.printStackTrace();
